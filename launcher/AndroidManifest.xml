@@ -26,5 +26,16 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <!-- Google TV only: replaces the stock home whenever it shows (see HomeRedirectService). -->
+        <service
+            android:name=".HomeRedirectService"
+            android:label="Accueil perso"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

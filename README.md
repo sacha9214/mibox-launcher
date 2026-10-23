@@ -70,6 +70,22 @@ adb shell input keyevent KEYCODE_HOME
 
 C'est fini 🎉
 
+### 5 bis. Sur une box **Google TV** (Android 12+, ex. Thomson 240G, Chromecast Google TV)
+
+Sur Google TV, **ne désactive pas** l'accueil Google : un écran de secours protégé se relance en boucle (écran noir).
+Si ça t'arrive : `adb shell pm enable com.google.android.apps.tv.launcherx`.
+
+À la place, active le petit service d'accessibilité du launcher, qui remplace l'accueil Google dès qu'il s'affiche :
+
+```bash
+adb shell settings put secure enabled_accessibility_services fr.sacha.tvhome/.HomeRedirectService
+adb shell settings put secure accessibility_enabled 1
+adb shell input keyevent KEYCODE_HOME
+```
+
+Le service ne regarde que l'apparition de l'accueil Google (rien d'autre : pas de texte, pas de touches).
+Pour l'enlever : `adb shell settings put secure enabled_accessibility_services ""`.
+
 ---
 
 ## Bonus : nettoyer et accélérer la box (optionnel)
