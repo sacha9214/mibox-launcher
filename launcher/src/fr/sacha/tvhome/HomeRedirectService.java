@@ -29,6 +29,15 @@ public class HomeRedirectService extends AccessibilityService {
         info.packageNames = STOCK_HOMES.toArray(new String[0]);
         info.notificationTimeout = 0;
         setServiceInfo(info);
+        // At boot the stock home is usually already showing by the time this service starts,
+        // so no "window changed" event will come: bring our home up right away.
+        showHome();
+    }
+
+    private void showHome() {
+        startActivity(new Intent(this, HomeActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                        | Intent.FLAG_ACTIVITY_NO_ANIMATION));
     }
 
     @Override
@@ -36,9 +45,7 @@ public class HomeRedirectService extends AccessibilityService {
         if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
         CharSequence pkg = event.getPackageName();
         if (pkg == null || !STOCK_HOMES.contains(pkg.toString())) return;
-        startActivity(new Intent(this, HomeActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
-                        | Intent.FLAG_ACTIVITY_NO_ANIMATION));
+        showHome();
     }
 
     @Override
