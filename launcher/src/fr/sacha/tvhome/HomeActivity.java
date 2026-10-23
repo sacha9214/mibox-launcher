@@ -166,6 +166,7 @@ public class HomeActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        saveSideMargin(getIntent());
         applyTheme(isDark());
 
         FrameLayout root = new FrameLayout(this);
@@ -176,7 +177,8 @@ public class HomeActivity extends Activity {
         col.setOrientation(LinearLayout.VERTICAL);
         col.setClipChildren(false);
         // Wide margins: the TV crops the picture edges (overscan).
-        col.setPadding(dp(16), dp(30), dp(16), dp(24));
+        int side = getSharedPreferences("tvhome", MODE_PRIVATE).getInt("side_margin", 16);
+        col.setPadding(dp(side), dp(30), dp(side), dp(24));
         root.addView(col, new FrameLayout.LayoutParams(-1, -1));
 
         tabs = new LinearLayout(this);
@@ -255,6 +257,23 @@ public class HomeActivity extends Activity {
         if (System.currentTimeMillis() - lastFetch > REFRESH_MS) loadFeeds();
         else if (shelfStale && !shelf.hasFocus()) buildShelf();
         if (lastFocused != null && lastFocused.isAttachedToWindow()) lastFocused.requestFocus();
+    }
+
+    /**
+     * Each TV crops its edges differently (overscan), so the side margin is per box, set with:
+     *   adb shell am start -n fr.sacha.tvhome/.HomeActivity --ei side_margin 32
+     */
+    private boolean saveSideMargin(Intent i) {
+        if (i == null || !i.hasExtra("side_margin")) return false;
+        getSharedPreferences("tvhome", MODE_PRIVATE).edit()
+                .putInt("side_margin", i.getIntExtra("side_margin", 16)).apply();
+        return true;
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        if (saveSideMargin(intent)) recreate();
     }
 
     // Home is the bottom of the stack: Back does nothing here.

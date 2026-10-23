@@ -129,7 +129,8 @@ Tout le code est dans [`HomeActivity.java`](launcher/src/fr/sacha/tvhome/HomeAct
 
 - **Ordre des apps du dock** : liste `PREFERRED`.
 - **Onglets** : tableaux `TABS` / `TAB_FILTERS` (filtres JustWatch : genres, pays de production, films/séries).
-- **Marges** : `col.setPadding(...)` dans `onCreate`, à ajuster si ta TV coupe les bords (overscan).
+- **Marges** : si ta TV coupe les bords ou laisse trop de place (overscan), règle la marge des côtés sans recompiler (mémorisée sur la box) :
+  `adb shell am start -n fr.sacha.tvhome/.HomeActivity --ei side_margin 32` (16 par défaut).
 
 Compiler (sans Gradle) — prérequis sur Mac :
 
