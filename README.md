@@ -1,81 +1,82 @@
 # Mi Box Launcher
 
-Un écran d'accueil léger, inspiré de l'Apple TV, pour les box **Android TV** (testé sur une Xiaomi Mi Box S, Android 9).
-Il remplace l'accueil Google TV, enlève les pubs et les recommandations, et rend une vieille box plus rapide.
+A lightweight, Apple TV-inspired home screen for **Android TV** boxes (tested on a Xiaomi Mi Box S, Android 9).
+It replaces the Google TV home screen, removes ads and recommendations, and makes an old box feel fast again.
+The interface is in French.
 
-| Mode clair | Mode sombre |
+| Light mode | Dark mode |
 |---|---|
-| ![Mode clair](docs/clair.png) | ![Mode sombre](docs/sombre.png) |
+| ![Light mode](docs/clair.png) | ![Dark mode](docs/sombre.png) |
 
-## Ce que ça fait
+## Features
 
-- **Affiches Netflix** : ce qui est populaire sur Netflix France, en onglets *Explorer*, *Films*, *Séries*, *Comédie* (comédies françaises) et *Animé* (animés japonais). Un clic ouvre **directement la fiche dans Netflix**. Les listes viennent de [JustWatch](https://www.justwatch.com) et se mettent à jour toutes les 6 h.
-- **Dock d'apps** en bas, en verre dépoli. Les apps installées s'ajoutent toutes seules.
-- **Ligne d'infos** en haut à droite : heure, cours d'EssilorLuxottica (EL), Bitcoin, Ethereum, Solana (toutes les 5 min) et RAM utilisée en %.
-- **Mode sombre / clair** avec le bouton lune / soleil (le choix est mémorisé).
-- Boutons Wi-Fi et Réglages.
-- Aucune pub, aucun tracker, aucun compte. Une seule app de ~40 Ko, en Java pur, sans bibliothèque.
+- **Netflix posters**: what's popular on Netflix France, in tabs *Explorer*, *Films*, *Séries*, *Comédie* (French comedies) and *Animé* (Japanese anime). One click opens **the title directly in Netflix**. The lists come from [JustWatch](https://www.justwatch.com) and refresh every 6 hours.
+- **App dock** at the bottom, in frosted glass. Installed apps are added automatically.
+- **Info line** at the top right: time, EssilorLuxottica (EL), Bitcoin, Ethereum and Solana prices (every 5 minutes) and RAM usage in %.
+- **Dark / light mode** with the moon / sun button (the choice is remembered).
+- Wi-Fi and Settings buttons.
+- No ads, no trackers, no account. A single ~40 KB app in plain Java, with no libraries.
 
-> Les cours et les classements ne sont donnés qu'à titre d'information.
+> Prices and rankings are for information only.
 
 ---
 
-## Tuto : l'installer sur ta box
+## Install it on your box
 
-Il te faut un **ordinateur** (Mac, Linux ou Windows) sur **le même Wi-Fi** que la box.
+You need a **computer** (Mac, Linux or Windows) on **the same Wi-Fi** as the box.
 
-### 1. Activer le mode développeur sur la box
+### 1. Turn on developer mode on the box
 
-1. Sur la box : **Paramètres → Préférences de l'appareil → À propos**.
-2. Descends sur **Build** et appuie **7 fois** dessus avec la télécommande. Un message dit que tu es développeur.
-3. Retourne dans **Préférences de l'appareil → Options pour les développeurs** et active **Débogage USB** (et **Débogage réseau** s'il existe).
-4. Note l'**adresse IP** de la box : **Paramètres → Réseau → ton Wi-Fi** (du genre `192.168.1.75`).
+1. On the box: **Settings → Device Preferences → About**.
+2. Scroll to **Build** and press it **7 times** with the remote. A message says you are now a developer.
+3. Go back to **Device Preferences → Developer options** and turn on **USB debugging** (and **Network debugging** if it exists).
+4. Write down the box's **IP address**: **Settings → Network → your Wi-Fi** (something like `192.168.1.75`).
 
-### 2. Installer ADB sur l'ordinateur
+### 2. Install ADB on the computer
 
-- **Mac** : `brew install --cask android-platform-tools`
-- **Linux** : `sudo apt install adb`
-- **Windows** : télécharge les [Platform Tools](https://developer.android.com/tools/releases/platform-tools) et ouvre un terminal dans le dossier.
+- **Mac**: `brew install --cask android-platform-tools`
+- **Linux**: `sudo apt install adb`
+- **Windows**: download the [Platform Tools](https://developer.android.com/tools/releases/platform-tools) and open a terminal in that folder.
 
-### 3. Se connecter à la box
+### 3. Connect to the box
 
 ```bash
 adb connect 192.168.1.75:5555
 ```
 
-La TV affiche **« Autoriser le débogage ? »** : coche *Toujours autoriser* et valide. Puis vérifie :
+The TV shows **"Allow USB debugging?"**: tick *Always allow* and confirm. Then check:
 
 ```bash
 adb devices
 ```
 
-La box doit apparaître avec `device` à côté.
+The box should be listed with `device` next to it.
 
-### 4. Installer le launcher
+### 4. Install the launcher
 
-Télécharge `TvHome.apk` depuis la page [**Releases**](../../releases/latest), puis :
+Download `TvHome.apk` from the [**Releases**](../../releases/latest) page, then:
 
 ```bash
 adb install -r TvHome.apk
 ```
 
-### 5. En faire l'écran d'accueil
+### 5. Make it the home screen
 
-Désactive l'accueil Google (réversible) pour que le nouveau prenne la main :
+Disable the Google home screen (reversible) so the new one takes over:
 
 ```bash
 adb shell pm disable-user --user 0 com.google.android.tvlauncher
 adb shell input keyevent KEYCODE_HOME
 ```
 
-C'est fini 🎉
+Done 🎉
 
-### 5 bis. Sur une box **Google TV** (Android 12+, ex. Thomson 240G, Chromecast Google TV)
+### 5b. On a **Google TV** box (Android 12+, e.g. Thomson 240G, Chromecast with Google TV)
 
-Sur Google TV, **ne désactive pas** l'accueil Google : un écran de secours protégé se relance en boucle (écran noir).
-Si ça t'arrive : `adb shell pm enable com.google.android.apps.tv.launcherx`.
+On Google TV, **do not disable** the Google home screen: a protected fallback screen relaunches in a loop (black screen).
+If that happens: `adb shell pm enable com.google.android.apps.tv.launcherx`.
 
-À la place, active le petit service d'accessibilité du launcher, qui remplace l'accueil Google dès qu'il s'affiche :
+Instead, turn on the launcher's small accessibility service, which replaces the Google home screen as soon as it appears:
 
 ```bash
 adb shell settings put secure enabled_accessibility_services fr.sacha.tvhome/.HomeRedirectService
@@ -83,56 +84,56 @@ adb shell settings put secure accessibility_enabled 1
 adb shell input keyevent KEYCODE_HOME
 ```
 
-Le service ne regarde que l'apparition de l'accueil Google (rien d'autre : pas de texte, pas de touches).
-Pour l'enlever : `adb shell settings put secure enabled_accessibility_services ""`.
+The service only watches for the Google home screen appearing (nothing else: no text, no key presses).
+To remove it: `adb shell settings put secure enabled_accessibility_services ""`.
 
 ---
 
-## Bonus : nettoyer et accélérer la box (optionnel)
+## Bonus: clean up and speed up the box (optional)
 
-Tout est **réversible** (une réinitialisation d'usine remet aussi tout).
+Everything is **reversible** (a factory reset also restores everything).
 
 ```bash
-# Animations 2x plus rapides
+# Animations twice as fast
 adb shell settings put global window_animation_scale 0.5
 adb shell settings put global transition_animation_scale 0.5
 adb shell settings put global animator_duration_scale 0.5
 
-# Retirer le tracker publicitaire Alphonso et les pubs/recommandations
+# Remove the Alphonso ad tracker and the ads/recommendations
 adb shell pm uninstall --user 0 tv.alphonso.alphonso_eula
 adb shell pm uninstall --user 0 com.google.android.tvrecommendations
 ```
 
-Le script [`launcher/restore-mibox.sh`](launcher/restore-mibox.sh) fait tout d'un coup (installation, accueil, nettoyage complet d'une **Mi Box S**). Lis la liste des apps dedans avant de le lancer : elle retire aussi le Chromecast intégré et l'assistant vocal.
+The [`launcher/restore-mibox.sh`](launcher/restore-mibox.sh) script does it all at once (install, home screen, full cleanup of a **Mi Box S**). Read the app list inside before running it: it also removes the built-in Chromecast and the voice assistant.
 
 ```bash
 ./launcher/restore-mibox.sh 192.168.1.75
 ```
 
-Il cherche `TvHome.apk` dans le même dossier que lui (`launcher/`). Il sert aussi si une mise à jour remet l'ancien accueil.
+It looks for `TvHome.apk` in its own folder (`launcher/`). It is also useful if an update brings the old home screen back.
 
-## Revenir en arrière
+## Undo
 
 ```bash
 adb shell pm enable com.google.android.tvlauncher
 adb uninstall fr.sacha.tvhome
 ```
 
-Pour une app retirée : `adb shell cmd package install-existing <nom.du.paquet>`.
-Pour un service désactivé : `adb shell pm enable <nom.du.paquet>`.
+For a removed app: `adb shell cmd package install-existing <package.name>`.
+For a disabled service: `adb shell pm enable <package.name>`.
 
 ---
 
-## Personnaliser et compiler soi-même
+## Customize and build it yourself
 
-Tout le code est dans [`HomeActivity.java`](launcher/src/fr/sacha/tvhome/HomeActivity.java) :
+All the code is in [`HomeActivity.java`](launcher/src/fr/sacha/tvhome/HomeActivity.java):
 
-- **Ordre des apps du dock** : liste `PREFERRED`.
-- **Onglets** : tableaux `TABS` / `TAB_FILTERS` (filtres JustWatch : genres, pays de production, films/séries).
-- **Marges** : si ta TV coupe les bords ou laisse trop de place (overscan), règle la marge des côtés sans recompiler (mémorisée sur la box) :
-  `adb shell am start -n fr.sacha.tvhome/.HomeActivity --ei side_margin 32` (16 par défaut).
+- **Dock app order**: the `PREFERRED` list.
+- **Tabs**: the `TABS` / `TAB_FILTERS` arrays (JustWatch filters: genres, production countries, movies/shows).
+- **Margins**: if your TV crops the edges or leaves too much room (overscan), set the side margin without rebuilding (remembered on the box):
+  `adb shell am start -n fr.sacha.tvhome/.HomeActivity --ei side_margin 32` (16 by default).
 
-Compiler (sans Gradle) — prérequis sur Mac :
+Build (no Gradle). Requirements on a Mac:
 
 ```bash
 brew install openjdk@17
@@ -141,9 +142,9 @@ sdkmanager "build-tools;34.0.0" "platforms;android-28"
 ./launcher/build.sh
 ```
 
-`build.sh` utilise les chemins Homebrew ; adapte `JAVA_HOME` et `SDK` en haut du fichier sur une autre machine.
-Il génère une clé de signature locale au premier lancement.
+`build.sh` uses Homebrew paths; adjust `JAVA_HOME` and `SDK` at the top of the file on another machine.
+It generates a local signing key on first run.
 
-## Licence
+## License
 
-MIT — fais-en ce que tu veux.
+[MIT](LICENSE)
