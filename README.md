@@ -2,6 +2,7 @@
 
 A lightweight, Apple TV-inspired home screen for **Android TV** boxes (tested on a Xiaomi Mi Box S, Android 9).
 It replaces the Google TV home screen, removes ads and recommendations, and makes an old box feel fast again.
+It also runs on **LG TVs** (webOS) as an app: see [LG TVs](#lg-tvs-webos).
 The interface is in French.
 
 | Light mode | Dark mode |
@@ -86,6 +87,25 @@ adb shell input keyevent KEYCODE_HOME
 
 The service only watches for the Google home screen appearing (nothing else: no text, no key presses).
 To remove it: `adb shell settings put secure enabled_accessibility_services ""`.
+
+---
+
+## LG TVs (webOS)
+
+The same home screen as an LG web app, in [`webos/`](webos): the Netflix tabs, the info line, light and dark, and the dock of the TV's apps. LG doesn't let an app replace its home screen, so it stays an app: **hold a number key** on the remote while it's open, and that key opens it from anywhere. Tested on webOS 6.5.
+
+You need **Python 3** and **OpenSSH** (already on macOS, Linux and Windows 10+) on a computer on the same Wi-Fi.
+
+1. **On the TV**: LG Content Store → install **Developer Mode** → sign in with a free [LG developer account](https://webostv.developer.lge.com) → turn on **Dev Mode Status** (the TV restarts) → turn on **Key Server**. Write down the IP address and the passphrase it shows.
+2. **On the computer**, build and install (the first time, it asks for the TV's passphrase):
+   ```bash
+   python3 webos/install.py 192.168.1.120
+   ```
+3. **On the TV**, the first time, a message asks whether to allow the app: allow it, so the dock shows all your apps.
+
+Developer Mode lasts about 40 days: open the Developer Mode app now and then and press **EXTEND** (if it runs out, the TV removes the app; installing again brings it back). To remove it: `python3 webos/install.py 192.168.1.120 --uninstall`.
+
+How it works: [`webos/app/`](webos/app) is the screen (plain HTML, CSS and ES5), and a small JS service ([`webos/service/`](webos/service)) does what an LG web page can't: the JustWatch and Yahoo Finance requests, the RAM figure, and the TV's app list. `webos/build.py` packs the `.ipk` without LG's tools; `--preview` also writes `webos/out/` to open in a browser. The dock uses the Mi Box's wide logos from `launcher/assets/demo/` when you have them (they are not in the repo); otherwise, the TV's own app icons. The LG packaging, installer and app list call are adapted from [Free My TV](https://github.com/simbasjungles/free-my-tv) (MIT).
 
 ---
 

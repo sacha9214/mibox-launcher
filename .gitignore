@@ -5,3 +5,7 @@ launcher/*.keystore
 # Logos de démo (aperçu émulateur uniquement, logos de marques)
 launcher/assets/demo/
 .DS_Store
+
+# LG webOS build
+webos/out/
+*.ipk

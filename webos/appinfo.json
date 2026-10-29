@@ -1,0 +1,15 @@
+{
+  "id": "fr.sacha.tvhome",
+  "version": "1.0.0",
+  "vendor": "Sacha",
+  "type": "web",
+  "main": "index.html",
+  "title": "Accueil perso",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "iconColor": "#111114",
+  "resolution": "1920x1080",
+  "handlesRelaunch": true,
+  "disableBackHistoryAPI": true,
+  "requiredPermissions": ["applications", "applications.launcher"]
+}
