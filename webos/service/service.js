@@ -267,21 +267,22 @@ function bringBack(why) {
 }
 
 // How long LG's home is left to finish opening before this screen comes back. Quicker, and it takes the front back
-// as it settles, again and again: 0.7 s gave three back-and-forths in 4 s; 1 to 2.5 s, one clean switch (webOS 6.5).
-var HOME_DELAY = 1300;
+// as it settles, again and again. Measured on webOS 6.5 (LG's home opened 31 times): 0.7 s bounced; 0.8 s bounced
+// 3 times in 7; 0.9 s (8/8) and 1 s (6/6) switched once, cleanly. 1 s leaves a margin over that 0.8 s edge.
+var HOME_DELAY = 1000;
 
 /**
  * LG's home just opened: once it has settled, this screen comes back, unless Home was pressed again within 4 s of
  * that: then the person wants LG's home, and it stays. LG's home taking the front back within 1.5 s of ours is
- * the TV, not a person: we come back again (twice at most).
+ * the TV, not a person (a slow moment): we come back again, waiting longer each time (three times at most).
  */
 function onHome() {
   var now = Date.now();
-  if (frontAt > redirectedAt && now - frontAt < 1500 && regrabs < 2) regrabs++;
+  if (frontAt > redirectedAt && now - frontAt < 1500 && regrabs < 3) regrabs++;
   else if (now - redirectedAt < 4000) { log({watch: 'stay', why: 'home twice'}); return; }
   else regrabs = 0;
   clearTimeout(pending);
-  pending = setTimeout(function () { if (HOME.test(foreground)) bringBack('home'); }, HOME_DELAY);
+  pending = setTimeout(function () { if (HOME.test(foreground)) bringBack('home'); }, HOME_DELAY * (1 + regrabs / 2));
 }
 
 function startWatch() {
