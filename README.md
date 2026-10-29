@@ -105,6 +105,18 @@ You need **Python 3** and **OpenSSH** (already on macOS, Linux and Windows 10+) 
 
 LG gives these events to a Developer Mode app only through its remote control API (the one LG's phone app uses), so a small service on the TV watches it while the app is running in the background. After the TV restarts from the mains (not from standby), open the app once with its number key. Keep **Quick Start+** on (Settings → General → Devices → TV Management): the TV then only sleeps when turned off, and turning it on is detected.
 
+**Find a film from your phone.** The 📱 button at the top shows a QR code: scan it on the home Wi-Fi, describe a film or a show (even vaguely: "the series with the lawyer who never went to law school"), and the TV opens it: the title itself in Netflix, the app's home for other services. The TV serves that page itself (port 8090); Claude names the title on a server of yours, through your Claude subscription ([`server/tvhome_ai.py`](server/tvhome_ai.py)), and JustWatch says where it streams in France. To set it up on a server where Claude Code is installed:
+
+```bash
+scp server/tvhome_ai.py you@server:tvhome-ai/
+ssh you@server 'cd tvhome-ai && python3 tvhome_ai.py --setup' > webos/ai.local.json   # address, token, certificate
+ssh -t you@server 'sudo ufw allow 8791/tcp && claude auth login'
+ssh you@server 'cd tvhome-ai && nohup python3 tvhome_ai.py >> server.log 2>&1 &'      # and @reboot in crontab
+python3 webos/install.py 192.168.1.120                                                 # the TV gets the new settings
+```
+
+The token and certificate stay in `webos/ai.local.json` (not in git); the TV pins that certificate. The server answers 30 searches an hour at most.
+
 Developer Mode lasts about 40 days: open the Developer Mode app now and then and press **EXTEND** (if it runs out, the TV removes the app; installing again brings it back). To remove it: `python3 webos/install.py 192.168.1.120 --uninstall`.
 
 How it works: [`webos/app/`](webos/app) is the screen (plain HTML, CSS and ES5), and a small JS service ([`webos/service/`](webos/service)) does what an LG web page can't: the JustWatch and Yahoo Finance requests, the RAM figure, the TV's app list, and the Home / power-on watcher. A 4K LG draws apps at twice their size, so only transforms and opacity animate (56 fps on the dock, 53 on the posters, webOS 6.5). `luna-send-pub luna://com.webos.applicationManager/launch '{"id":"fr.sacha.tvhome","params":{"perf":"test"}}'` runs a speed test on the TV; `luna://fr.sacha.tvhome.service/dump` reads its numbers and the watcher's events. `webos/build.py` packs the `.ipk` without LG's tools; `--preview` also writes `webos/out/` to open in a browser. The dock uses the Mi Box's wide logos from `launcher/assets/demo/` when you have them (they are not in the repo); otherwise, the TV's own app icons. The LG packaging, installer and app list call are adapted from [Free My TV](https://github.com/simbasjungles/free-my-tv) (MIT).

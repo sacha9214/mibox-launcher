@@ -8,44 +8,67 @@
  *  - watch: through that same API, brings the home screen back when the TV turns on and when LG's home opens.
  *    LG denies these events to Developer Mode apps on its own bus (Luna), but its remote control API, once
  *    allowed on the TV, gives them. The page's subscription to it is what keeps this service running.
+ *  - phone: a page for phones on the home Wi-Fi (http://<TV>:8090): describe a film or a show, Claude names it (on
+ *    the server in server/tvhome_ai.py, with a Claude subscription), JustWatch says where it streams in France, and
+ *    the TV opens it there (the title itself in Netflix; other apps open on their home).
  *  - log / dump: the speed test's numbers and the watcher's events, kept in memory (the service can't write
  *    where SSH reads), read with luna-send-pub luna://fr.sacha.tvhome.service/dump '{}'.
  * Plain ES5 with Node's built-ins only: webOS 6 ships Node 8.
  */
 var fs = require('fs');
+var http = require('http');
 var https = require('https');
 var net = require('net');
+var os = require('os');
 var Service = require('webos-service');
 
 var service = new Service(require('./package.json').name);
 
 // ---- jw ------------------------------------------------------------------
 
-service.register('jw', function (message) {
-  var body = Buffer.from(JSON.stringify((message.payload || {}).query || {}));
-  var req = https.request({hostname: 'apis.justwatch.com', path: '/graphql', method: 'POST',
-    headers: {'Content-Type': 'application/json', 'Content-Length': body.length}}, function (res) {
+/** POSTs JSON over HTTPS; done(error, answer). `opts` are https.request's (hostname, path, port, headers, ca). */
+function postJSON(opts, obj, timeout, done) {
+  var body = Buffer.from(JSON.stringify(obj)), finished = false;
+  function end(err, json) { if (!finished) { finished = true; done(err, json); } }
+  opts.method = 'POST';
+  opts.headers = opts.headers || {};
+  opts.headers['Content-Type'] = 'application/json';
+  opts.headers['Content-Length'] = body.length;
+  var req = https.request(opts, function (res) {
     var text = '';
     res.setEncoding('utf8');
     res.on('data', function (c) { text += c; });
     res.on('end', function () {
-      try {
-        var json = JSON.parse(text);
-        // Only the Netflix link of each title goes back: the answer stays small on the TV's message bus.
-        json.data.popularTitles.edges.forEach(function (e) {
-          e.node.offers = (e.node.offers || []).filter(function (o) {
-            return /netflix\.com\/title\//.test(o.standardWebURL || '');
-          }).slice(0, 1);
-        });
-        message.respond({returnValue: true, json: json});
-      } catch (e) {
-        message.respond({returnValue: false, errorText: 'Bad answer'});
-      }
+      var json = null;
+      try { json = JSON.parse(text); } catch (e) {}
+      end(res.statusCode === 200 && json ? null : 'HTTP ' + res.statusCode, json);
     });
   });
-  req.setTimeout(10000, function () { req.abort(); });
-  req.on('error', function () { message.respond({returnValue: false, errorText: 'Offline'}); });
+  // A hard deadline: a server behind a firewall that drops the connection never times the socket out (Node 8).
+  var deadline = setTimeout(function () { end('timeout'); req.abort(); }, timeout);
+  req.on('error', function (e) { end(String(e.code || e.message)); });
+  req.on('close', function () { clearTimeout(deadline); });
   req.end(body);
+}
+
+function justWatch(query, done) {
+  postJSON({hostname: 'apis.justwatch.com', path: '/graphql'}, query, 10000, done);
+}
+
+service.register('jw', function (message) {
+  justWatch((message.payload || {}).query || {}, function (err, json) {
+    try {
+      // Only the Netflix link of each title goes back: the answer stays small on the TV's message bus.
+      json.data.popularTitles.edges.forEach(function (e) {
+        e.node.offers = (e.node.offers || []).filter(function (o) {
+          return /netflix\.com\/title\//.test(o.standardWebURL || '');
+        }).slice(0, 1);
+      });
+      message.respond({returnValue: true, json: json});
+    } catch (e) {
+      message.respond({returnValue: false, errorText: err || 'Bad answer'});
+    }
+  });
 });
 
 // ---- quote ---------------------------------------------------------------
@@ -286,6 +309,7 @@ function onHome() {
 }
 
 function startWatch() {
+  startPhone();
   if (conn || !watchers.length) return;
   clearTimeout(retry);
   conn = connect(key, {
@@ -345,3 +369,175 @@ service.register('watch', function (message) {
 }, function (message) {   // the page went away
   watchers = watchers.filter(function (w) { return w !== message; });
 });
+
+// ---- phone ---------------------------------------------------------------
+
+var PHONE_PORT = 8090;
+var AI = null;   // {url, token, cert} from webos/ai.local.json, put in the package by build.py
+try { AI = JSON.parse(fs.readFileSync(__dirname + '/ai.json', 'utf8')); } catch (e) {}
+var phoneServer = null;
+
+/** The TV's address on the home network. */
+function lanAddress() {
+  var nets = os.networkInterfaces();
+  for (var name in nets) {
+    for (var i = 0; i < nets[name].length; i++) {
+      var a = nets[name][i];
+      if (a.family === 'IPv4' && !a.internal && /^(10|172\.(1[6-9]|2\d|3[01])|192\.168)\./.test(a.address)) return a.address;
+    }
+  }
+  return '';
+}
+
+service.register('phone', function (message) {
+  startPhone();
+  var ip = lanAddress();
+  message.respond({returnValue: true, url: ip ? 'http://' + ip + ':' + PHONE_PORT : '', ai: !!AI});
+});
+
+/** Claude's guesses for a description, from the server: [{title, original_title, year, type}]. */
+function askAI(q, done) {
+  if (!AI) { done('not set up'); return; }
+  var u = /^https:\/\/([^:/]+):(\d+)(\/.*)$/.exec(AI.url);
+  postJSON({hostname: u[1], port: +u[2], path: u[3], ca: AI.cert, headers: {Authorization: 'Bearer ' + AI.token}},
+      {q: q}, 45000, function (err, json) { done(err, json && json.results); });
+}
+
+var SEARCH = 'query($q:String!){popularTitles(country:FR,first:5,filter:{searchQuery:$q})' +
+    '{edges{node{objectType content(country:FR,language:"fr"){title originalTitle originalReleaseYear posterUrl}' +
+    ' offers(country:FR,platform:WEB){monetizationType package{clearName} standardWebURL}}}}}';
+
+/** One guess on JustWatch: the closest title (same kind, year within one) and where it streams. */
+function lookUp(guess, done) {
+  function search(q, next) {
+    justWatch({query: SEARCH, variables: {q: q}}, function (err, json) {
+      var edges = [];
+      try { edges = json.data.popularTitles.edges; } catch (e) {}
+      var best = null;
+      edges.forEach(function (e) {
+        var c = e.node.content || {}, kind = e.node.objectType === 'SHOW' ? 'show' : 'movie';
+        var near = !guess.year || !c.originalReleaseYear || Math.abs(c.originalReleaseYear - guess.year) <= 1;
+        if (!best && kind === guess.type && near) best = e.node;
+      });
+      if (best || !next) done(best ? describe(best) : null); else next();
+    });
+  }
+  search(guess.title, guess.original_title && guess.original_title !== guess.title
+      ? function () { search(guess.original_title, null); } : null);
+}
+
+function describe(node) {
+  var c = node.content || {}, seen = {}, offers = [];
+  (node.offers || []).forEach(function (o) {
+    // "Netflix Standard with Ads" is Netflix, "Amazon Prime Video with Ads" is Prime Video: one button each.
+    var name = o.package && o.package.clearName.replace(/\s+(Standard\s+)?with Ads$/i, '').replace(/^Amazon\s+/, '');
+    // Included in a subscription, or free: renting and buying aren't for a quick "play it".
+    if (!name || seen[name] || !/^(FLATRATE|FREE|ADS)$/.test(o.monetizationType)) return;
+    seen[name] = true;
+    offers.push({service: name, url: o.standardWebURL || ''});
+  });
+  return {title: c.title, year: c.originalReleaseYear || null, type: node.objectType === 'SHOW' ? 'show' : 'movie',
+    poster: c.posterUrl ? 'https://images.justwatch.com' + c.posterUrl.replace('{profile}', 's332').replace('{format}', 'jpg') : '',
+    offers: offers};
+}
+
+/** "Amazon Prime Video" → "primevideo", "Disney Plus" → "disneyplus", "Canal+" → "canalplus". */
+function norm(s) {
+  return String(s || '').toLowerCase().replace(/\+/g, 'plus').replace(/amazon/g, '').replace(/[^a-z0-9]/g, '');
+}
+
+/** The TV's apps, through the remote control API (the key the watcher has): [{id, title}]. */
+function tvApps(done) {
+  if (!key) { done([]); return; }
+  var finished = false;
+  var c = connect(key, {
+    registered: function (k, send) { send({type: 'request', id: 'apps', uri: 'ssap://com.webos.applicationManager/listLaunchPoints'}); },
+    message: function (m) {
+      if (m.id !== 'apps' || finished) return;
+      finished = true;
+      c.close();
+      done(((m.payload || {}).launchPoints || []).map(function (p) { return {id: p.id, title: p.title || ''}; }));
+    },
+    end: function () { if (!finished) { finished = true; done([]); } }
+  });
+}
+
+/** Opens a title on the TV: Netflix on the title itself, another service on its app. done(error, app title). */
+function play(offer, done) {
+  var nf = /netflix\.com\/title\/(\d+)/.exec(offer.url || '');
+  if (nf) {
+    launch('netflix', {contentTarget: 'm=https://api-global.netflix.com/catalog/titles/movie/' + nf[1] + '&source_type=4'},
+        function (ok) { done(ok ? null : 'launch', 'Netflix'); });
+    return;
+  }
+  tvApps(function (apps) {
+    var want = norm(offer.service), app = null;
+    apps.forEach(function (a) {
+      var t = norm(a.title);
+      if (!app && t && (t.indexOf(want) >= 0 || want.indexOf(t) >= 0)) app = a;
+    });
+    if (!app) { done('no app'); return; }
+    launch(app.id, null, function (ok) { done(ok ? null : 'launch', app.title); });
+  });
+}
+
+function launch(id, params, done) {
+  service.call('luna://com.webos.applicationManager/launch', params ? {id: id, params: params} : {id: id}, function (m) {
+    done(!!(m.payload && m.payload.returnValue));
+  });
+}
+
+function startPhone() {
+  if (phoneServer) return;
+  phoneServer = http.createServer(function (req, res) {
+    function reply(code, obj, type) {
+      var body = Buffer.from(typeof obj === 'string' ? obj : JSON.stringify(obj));
+      res.writeHead(code, {'Content-Type': type || 'application/json; charset=utf-8', 'Content-Length': body.length,
+        'Cache-Control': 'no-store'});
+      res.end(body);
+    }
+    // The home network only: the TV is behind the box's NAT, and this says so twice.
+    var from = req.socket.remoteAddress || '';
+    if (!/^(::ffff:)?(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.)/.test(from)) { reply(403, {error: 'home only'}); return; }
+    if (req.method === 'GET' && (req.url === '/' || req.url.indexOf('/?') === 0)) {
+      fs.readFile(__dirname + '/phone.html', function (err, html) {
+        if (err) reply(500, {error: 'no page'}); else reply(200, html.toString('utf8'), 'text/html; charset=utf-8');
+      });
+      return;
+    }
+    if (req.method !== 'POST') { reply(404, {error: 'not found'}); return; }
+    var body = '';
+    req.setEncoding('utf8');
+    req.on('data', function (c) { if (body.length < 4096) body += c; });
+    req.on('end', function () {
+      var p = {};
+      try { p = JSON.parse(body || '{}'); } catch (e) {}
+      if (req.url === '/api/ask') {
+        var q = String(p.q || '').trim().slice(0, 500);
+        if (!q) { reply(400, {error: 'empty'}); return; }
+        log({phone: 'ask'});
+        askAI(q, function (err, guesses) {
+          if (err || !guesses) { log({phone: 'ai failed', error: err}); reply(502, {error: 'ai'}); return; }
+          var out = [], left = guesses.length;
+          if (!left) { reply(200, {results: []}); return; }
+          guesses.forEach(function (g, i) {
+            lookUp(g, function (found) {
+              // Not on JustWatch: still shown, with no service, so the person sees what Claude understood.
+              out[i] = found || {title: g.title, year: g.year, type: g.type, poster: '', offers: []};
+              if (--left === 0) reply(200, {results: out});
+            });
+          });
+        });
+      } else if (req.url === '/api/play') {
+        play({service: String(p.service || ''), url: String(p.url || '')}, function (err, app) {
+          log({phone: 'play', app: app, error: err});
+          reply(err ? 409 : 200, err ? {error: err} : {app: app});
+        });
+      } else if (req.url === '/api/home') {
+        launch(APP_ID, null, function (ok) { reply(ok ? 200 : 409, {}); });
+      } else reply(404, {error: 'not found'});
+    });
+  });
+  phoneServer.on('error', function (e) { log({phone: 'server error', error: e.code}); phoneServer = null; });
+  phoneServer.listen(PHONE_PORT, '0.0.0.0', function () { log({phone: 'listening', port: PHONE_PORT}); });
+}

@@ -9,3 +9,4 @@ launcher/assets/demo/
 # LG webOS build
 webos/out/
 *.ipk
+webos/ai.local.json

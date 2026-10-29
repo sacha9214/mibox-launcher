@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#ECEEF1" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0F1013" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Télé</title>
+  <!--
+    The phone's page, served by the TV (webos/service/service.js on :8090): describe a film or a show, pick it,
+    and the TV opens it. Same palette as the home screen. Plain ES5: no build, no library.
+  -->
+  <style>
+    :root {
+      --ink: #111114; --muted: #8A8D93; --on-ink: #FFFFFF; --surface: #FFFFFF; --placeholder: #D5D8DD;
+      --bg: #ECEEF1; --line: rgba(0, 0, 0, 0.08); --accent: #E50914;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --ink: #F2F3F5; --muted: #8E9299; --on-ink: #111114; --surface: #24262C; --placeholder: #2A2C33;
+        --bg: #0F1013; --line: rgba(255, 255, 255, 0.10); }
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0; background: var(--bg); color: var(--ink);
+      font: 16px/1.4 -apple-system, BlinkMacSystemFont, Roboto, "Segoe UI", sans-serif;
+      padding: max(20px, env(safe-area-inset-top)) 18px max(24px, env(safe-area-inset-bottom));
+    }
+    h1 { font-size: 26px; margin: 4px 0 2px; letter-spacing: -0.02em; }
+    .lead { color: var(--muted); margin: 0 0 16px; font-size: 15px; }
+    form { background: var(--surface); border-radius: 18px; padding: 12px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); }
+    textarea {
+      width: 100%; min-height: 84px; border: 0; resize: none; outline: none; background: transparent; color: var(--ink);
+      font: inherit; font-size: 17px;
+    }
+    textarea::placeholder { color: var(--muted); }
+    .row { display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
+    button {
+      border: 0; border-radius: 999px; padding: 11px 18px; font: inherit; font-weight: 600; cursor: pointer;
+      background: var(--ink); color: var(--on-ink);
+    }
+    button.ghost { background: transparent; color: var(--muted); font-weight: 500; padding-left: 8px; padding-right: 8px; }
+    button:disabled { opacity: 0.5; }
+    #status { color: var(--muted); font-size: 15px; min-height: 22px; margin: 16px 2px 8px; }
+    .card {
+      display: flex; gap: 14px; background: var(--surface); border-radius: 16px; padding: 12px; margin-bottom: 12px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
+    .poster { width: 84px; height: 126px; border-radius: 10px; background: var(--placeholder) center/cover; flex: none; }
+    .info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .title { font-weight: 700; font-size: 17px; line-height: 1.25; }
+    .meta { color: var(--muted); font-size: 14px; margin: 2px 0 10px; }
+    .offers { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; }
+    .offers button { padding: 9px 14px; font-size: 15px; }
+    .offers button.netflix { background: var(--accent); color: #FFFFFF; }
+    .none { color: var(--muted); font-size: 14px; margin-top: auto; }
+    footer { margin-top: 22px; display: flex; justify-content: center; }
+  </style>
+</head>
+<body>
+  <h1>Qu'est-ce qu'on regarde&nbsp;?</h1>
+  <p class="lead">Décris le film ou la série, même vaguement. La télé l'ouvre.</p>
+  <form id="ask">
+    <textarea id="q" placeholder="La série avec l'avocat qui n'a jamais fait d'études de droit…" enterkeyhint="search"></textarea>
+    <div class="row">
+      <button type="button" class="ghost" id="clear">Effacer</button>
+      <button type="submit" id="go">Trouver</button>
+    </div>
+  </form>
+  <div id="status"></div>
+  <div id="results"></div>
+  <footer><button type="button" class="ghost" id="home">Revenir à l'accueil de la télé</button></footer>
+
+  <script>
+    (function () {
+      'use strict';
+      function $(id) { return document.getElementById(id); }
+      function el(tag, cls, text) {
+        var e = document.createElement(tag);
+        if (cls) e.className = cls;
+        if (text) e.textContent = text;
+        return e;
+      }
+      function post(path, body, done) {
+        var x = new XMLHttpRequest();
+        x.open('POST', path, true);
+        x.timeout = 90000;
+        x.setRequestHeader('Content-Type', 'application/json');
+        x.onload = function () {
+          var j = null;
+          try { j = JSON.parse(x.responseText); } catch (e) {}
+          done(x.status === 200 ? null : (j && j.error) || 'HTTP ' + x.status, j);
+        };
+        x.onerror = x.ontimeout = function () { done('offline'); };
+        x.send(JSON.stringify(body));
+      }
+      function status(text) { $('status').textContent = text || ''; }
+
+      var ERRORS = {
+        offline: 'La télé ne répond pas. Le téléphone est-il sur le Wi-Fi de la maison, et la télé allumée ?',
+        ai: "L'IA ne répond pas pour l'instant. Réessaie dans un moment.",
+        'no app': "Ce service n'est pas installé sur la télé.",
+        launch: "La télé n'a pas voulu l'ouvrir."
+      };
+
+      function show(results) {
+        var box = $('results');
+        box.innerHTML = '';
+        if (!results.length) { status("Rien trouvé. Ajoute un détail : un acteur, l'année, l'histoire…"); return; }
+        status(results.length > 1 ? 'Le plus probable en premier :' : '');
+        results.forEach(function (r) {
+          var card = el('div', 'card'), poster = el('div', 'poster'), info = el('div', 'info');
+          if (r.poster) poster.style.backgroundImage = 'url("' + r.poster + '")';
+          info.appendChild(el('div', 'title', r.title));
+          info.appendChild(el('div', 'meta', [r.type === 'show' ? 'Série' : 'Film', r.year].filter(Boolean).join(' · ')));
+          if (r.offers.length) {
+            var offers = el('div', 'offers');
+            r.offers.forEach(function (o) {
+              var b = el('button', /netflix/i.test(o.service) ? 'netflix' : '', '▶ ' + o.service);
+              b.onclick = function () { play(r, o, b); };
+              offers.appendChild(b);
+            });
+            info.appendChild(offers);
+          } else info.appendChild(el('div', 'none', 'Pas en streaming inclus en France pour l’instant.'));
+          card.appendChild(poster);
+          card.appendChild(info);
+          box.appendChild(card);
+        });
+      }
+
+      function play(r, o, button) {
+        button.disabled = true;
+        status('Ouverture sur la télé…');
+        post('/api/play', {service: o.service, url: o.url}, function (err, j) {
+          button.disabled = false;
+          if (err) { status(ERRORS[err] || ERRORS.launch); return; }
+          status(/netflix/i.test(o.service) ? '« ' + r.title + ' » est ouvert sur la télé.'
+              : (j.app || o.service) + ' est ouvert : cherche « ' + r.title + ' » dedans.');
+        });
+      }
+
+      $('ask').onsubmit = function (e) {
+        e.preventDefault();
+        var q = $('q').value.trim();
+        if (!q) { $('q').focus(); return; }
+        $('q').blur();
+        $('go').disabled = true;
+        $('results').innerHTML = '';
+        status('Je cherche…');
+        post('/api/ask', {q: q}, function (err, j) {
+          $('go').disabled = false;
+          if (err) { status(ERRORS[err] || ERRORS.ai); return; }
+          show(j.results || []);
+        });
+      };
+      // Enter searches (the keyboard's "Search" key); a new line isn't useful here.
+      $('q').onkeydown = function (e) {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('ask').onsubmit(e); }
+      };
+      $('clear').onclick = function () { $('q').value = ''; $('results').innerHTML = ''; status(''); $('q').focus(); };
+      $('home').onclick = function () {
+        post('/api/home', {}, function (err) { status(err ? ERRORS.offline : "L'accueil est revenu sur la télé."); });
+      };
+    })();
+  </script>
+</body>
+</html>

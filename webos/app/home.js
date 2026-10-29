@@ -191,6 +191,10 @@
 
   function move(key) {
     var K = TV.keys, row = at.row, i = at[row];
+    if (phoneOpen) {   // the phone card: OK, Back or an arrow closes it
+      if (key === K.ok || key === K.left || key === K.right || key === K.up || key === K.down) closePhone();
+      return true;
+    }
     if (key === K.left) setFocus(row, i - 1);
     else if (key === K.right) setFocus(row, i + 1);
     else if (key === K.up) {
@@ -219,6 +223,9 @@
   // ---- Header ----------------------------------------------------------------------------------------------
 
   var GLYPHS = {
+    // A phone: the outline, and the button at the bottom.
+    phone: '<svg viewBox="0 0 100 100"><rect x="27" y="6" width="46" height="88" rx="10" fill="none" ' +
+        'stroke="currentColor" stroke-width="11"/><circle cx="50" cy="76" r="6" fill="currentColor"/></svg>',
     moon: '<svg viewBox="0 0 100 100"><defs><mask id="bite"><rect width="100" height="100" fill="#fff"/>' +
         '<circle cx="72" cy="32" r="34" fill="#000"/></mask></defs>' +
         '<circle cx="50" cy="50" r="42" fill="currentColor" mask="url(#bite)"/></svg>',
@@ -266,6 +273,7 @@
       pointable(e, 'header', i);
     });
     // Moon in light mode (switch to dark), sun in dark mode (switch to light).
+    round('phone', openPhone);
     var theme = round(isDark() ? 'sun' : 'moon', function () {
       put('dark', isDark() ? '0' : '1');
       applyTheme();
@@ -467,6 +475,39 @@
     else reveal(dock, $('dockBox'), rows.dock[0] || dock, true, 0, 22, true);
   }
 
+  // ---- Phone: a QR code to the page the TV serves (webos/service/phone.html) ---------------------------------
+
+  var phoneOpen = false;
+
+  function openPhone() {
+    TV.service('phone', {}, function (res) {
+      var url = res ? res.url : (TV.webos ? '' : 'http://192.168.1.120:8090');   // a browser shows an example
+      var card = el('div', 'phone-card');
+      card.appendChild(el('div', 'phone-title', 'Trouver un film depuis ton téléphone'));
+      if (url) {
+        var code = el('div', 'phone-qr');
+        code.innerHTML = QR.svg(url);
+        card.appendChild(code);
+        card.appendChild(el('div', 'phone-text', "Scanne avec l'appareil photo, sur le Wi-Fi de la maison."));
+        card.appendChild(el('div', 'phone-url', url.replace(/^http:\/\//, '')));
+        if (res && !res.ai) card.appendChild(el('div', 'phone-text', "La recherche par l'IA n'est pas réglée sur cette télé."));
+      } else card.appendChild(el('div', 'phone-text', "La télé n'a pas d'adresse sur le Wi-Fi."));
+      card.appendChild(el('div', 'phone-hint', 'OK pour fermer'));
+      var shade = el('div', 'phone-shade');
+      shade.id = 'phone';
+      shade.appendChild(card);
+      shade.addEventListener('click', closePhone);
+      $('stage').appendChild(shade);
+      phoneOpen = true;
+    });
+  }
+
+  function closePhone() {
+    var shade = $('phone');
+    if (shade) shade.parentNode.removeChild(shade);
+    phoneOpen = false;
+  }
+
   // ---- Speed test (opened with {"perf": "label"}): moves through every row, logs the frame times ----------
 
   function speedTest(label) {
@@ -520,6 +561,7 @@
     // Back does nothing, as on the Mi Box: this is the home screen (LG's home would only bring it back).
     if (e.keyCode === TV.keys.back) {
       e.preventDefault();
+      if (phoneOpen) closePhone();
       return;
     }
     if (move(e.keyCode)) e.preventDefault();

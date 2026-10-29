@@ -23,6 +23,8 @@ ROOT = os.path.dirname(HERE)
 IPK = os.path.join(ROOT, 'TvHome-webos.ipk')
 OUT = os.path.join(HERE, 'out')
 LOGOS = os.path.join(ROOT, 'launcher', 'assets', 'demo')
+# The AI server's address, token and certificate (server/tvhome_ai.py --setup), kept out of git.
+AI_CONFIG = os.path.join(HERE, 'ai.local.json')
 SKIP_LOGOS = {'playstore', 'livechannels'}   # Android-only apps
 
 
@@ -96,14 +98,17 @@ def build(preview):
             entries.append((base + '/' + parent, None))
         entries.append((base + '/' + path, app[path]))
 
-    # The JS service: EssilorLuxottica's price, the RAM, and the TV's app list (webos/service).
+    # The JS service: prices, RAM, the TV's app list, the Home watcher and the phone page (webos/service).
     service_id = app_id + '.service'
     service = {'service.js': read(os.path.join(HERE, 'service', 'service.js')),
+               'phone.html': read(os.path.join(HERE, 'service', 'phone.html')),
                'package.json': json.dumps({'name': service_id, 'version': version, 'main': 'service.js'},
                                           indent=2).encode('utf-8'),
                'services.json': json.dumps({'id': service_id, 'description': 'Accueil perso',
                                             'services': [{'name': service_id, 'description': 'Accueil perso'}]},
                                            indent=2).encode('utf-8')}
+    if os.path.exists(AI_CONFIG):
+        service['ai.json'] = read(AI_CONFIG)
     service_base = 'usr/palm/services/' + service_id
     entries += [('usr/palm/services', None), (service_base, None)]
     entries += [(service_base + '/' + name, service[name]) for name in sorted(service)]
@@ -130,7 +135,8 @@ def build(preview):
                 f.write(content)
         print('Preview: open webos/out/index.html in a browser.')
     logos = sum(1 for p in app if p.startswith('logos/'))
-    print('Built %s (%s %s, %d KB, %d logos)' % (os.path.basename(IPK), app_id, version, len(data) // 1024, logos))
+    print('Built %s (%s %s, %d KB, %d logos, phone search %s)' % (os.path.basename(IPK), app_id, version,
+          len(data) // 1024, logos, 'on' if 'ai.json' in service else 'off: no webos/ai.local.json'))
 
 
 if __name__ == '__main__':
