@@ -34,15 +34,32 @@ var TV = (function () {
     bridge.call(uri, JSON.stringify(params || {}));
   }
 
-  /** A call to our service on the TV (quote, ram, ssap). */
+  /** A call to our service on the TV (jw, quote, ram, ssap, log). */
   function service(method, params, done) {
     luna('luna://' + self + '.service/' + method, params, done);
+  }
+
+  /** A Luna subscription: onMessage(result) for every reply. Held here for good, so it's never collected. */
+  function subscribe(uri, params, onMessage) {
+    if (!webos) return;
+    var bridge = new window.PalmServiceBridge();
+    calls.push(bridge);
+    bridge.onservicecallback = function (message) {
+      var result = null;
+      try { result = JSON.parse(message); } catch (e) {}
+      if (result) onMessage(result);
+    };
+    params.subscribe = true;
+    bridge.call(uri, JSON.stringify(params));
   }
 
   // webOS 6 hides listLaunchPoints from Developer Mode apps. The list then comes from the TV's remote control API
   // (the one LG's phone app uses): the TV asks once to allow it, and the key it gives back is kept. Newer firmware
   // refuses the page's own origin ("invalid origin"), so the service makes that call.
-  var SSAP_KEY = 'tvhome.ssapKey', SSAP_REFUSED = 'tvhome.ssapRefused';
+  // The same list as webos/service: the app list, and for the watcher, the app on screen, the power state and
+  // opening apps. Changing it makes the TV ask again.
+  var SSAP_KEY = 'tvhome.ssapKey2', SSAP_REFUSED = 'tvhome.ssapRefused2';
+  var PERMISSIONS = ['READ_INSTALLED_APPS', 'READ_RUNNING_APPS', 'READ_POWER_STATE', 'LAUNCH'];
 
   function store(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   function read(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -69,7 +86,7 @@ var TV = (function () {
     try { ws = new WebSocket('ws://127.0.0.1:3000'); } catch (e) { viaService(); return; }
     ws.onopen = function () {
       var payload = {forcePairing: false, pairingType: 'PROMPT',
-        manifest: {manifestVersion: 1, appVersion: '1.0', permissions: ['READ_INSTALLED_APPS']}};
+        manifest: {manifestVersion: 1, appVersion: '1.0', permissions: PERMISSIONS}};
       if (key) payload['client-key'] = key;
       ws.send(JSON.stringify({type: 'register', id: 'register', payload: payload}));
     };
@@ -146,11 +163,8 @@ var TV = (function () {
           });
           return;
         }
+        // Until the TV is allowed (the watcher asks, once): the well-known apps.
         knownApps(done);
-        // The TV asks once; the full list shows from the next start on.
-        if (!read(SSAP_REFUSED)) ssap('com.webos.applicationManager/listLaunchPoints', function (res2) {
-          if (res2 && TV.onApps) TV.onApps(list(res2));
-        });
       });
     },
 
@@ -177,13 +191,30 @@ var TV = (function () {
     },
 
     service: function (method, params, done) {
-      if (!webos) { done(null); return; }
+      if (!webos) { if (done) done(null); return; }
       service(method, params, done);
     },
 
-    /** Back: to wherever the person came from (LG's home stays the TV's home). */
-    back: function () {
-      if (window.PalmSystem && window.PalmSystem.platformBack) window.PalmSystem.platformBack();
+    /**
+     * Starts the service's watcher: it brings this screen back when the TV turns on and when LG's home screen opens
+     * (Home pressed twice in a row lets LG's stay). Our subscription is what keeps the service running.
+     */
+    watch: function () {
+      if (read(SSAP_REFUSED)) return;
+      subscribe('luna://' + self + '.service/watch', {clientKey: read(SSAP_KEY)}, function (res) {
+        if (res.refused) store(SSAP_REFUSED, '1');   // "no" on the TV: not asked again
+        if (!res.clientKey || res.clientKey === read(SSAP_KEY)) return;
+        // Just allowed: the dock gets every app, with its icon.
+        store(SSAP_KEY, res.clientKey);
+        ssap('com.webos.applicationManager/listLaunchPoints', function (res2) {
+          if (res2 && TV.onApps) TV.onApps(list(res2));
+        });
+      });
+    },
+
+    /** What the app was opened with ({perf: true} runs the speed test). */
+    launchParams: function () {
+      try { return JSON.parse(window.PalmSystem.launchParams || '{}') || {}; } catch (e) { return {}; }
     },
 
     keys: {left: 37, up: 38, right: 39, down: 40, ok: 13, back: 461}

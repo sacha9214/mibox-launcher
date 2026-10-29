@@ -101,11 +101,13 @@ You need **Python 3** and **OpenSSH** (already on macOS, Linux and Windows 10+) 
    ```bash
    python3 webos/install.py 192.168.1.120
    ```
-3. **On the TV**, the first time, a message asks whether to allow the app: allow it, so the dock shows all your apps.
+3. **On the TV**, the first time, a message asks whether to allow the app: allow it. The dock then shows all your apps, and the app becomes the TV's home: it comes back when you press **Home** and when the TV turns on. Press **Home twice** to reach LG's own home screen.
+
+LG gives these events to a Developer Mode app only through its remote control API (the one LG's phone app uses), so a small service on the TV watches it while the app is running in the background. After the TV restarts from the mains (not from standby), open the app once with its number key. Keep **Quick Start+** on (Settings → General → Devices → TV Management): the TV then only sleeps when turned off, and turning it on is detected.
 
 Developer Mode lasts about 40 days: open the Developer Mode app now and then and press **EXTEND** (if it runs out, the TV removes the app; installing again brings it back). To remove it: `python3 webos/install.py 192.168.1.120 --uninstall`.
 
-How it works: [`webos/app/`](webos/app) is the screen (plain HTML, CSS and ES5), and a small JS service ([`webos/service/`](webos/service)) does what an LG web page can't: the JustWatch and Yahoo Finance requests, the RAM figure, and the TV's app list. `webos/build.py` packs the `.ipk` without LG's tools; `--preview` also writes `webos/out/` to open in a browser. The dock uses the Mi Box's wide logos from `launcher/assets/demo/` when you have them (they are not in the repo); otherwise, the TV's own app icons. The LG packaging, installer and app list call are adapted from [Free My TV](https://github.com/simbasjungles/free-my-tv) (MIT).
+How it works: [`webos/app/`](webos/app) is the screen (plain HTML, CSS and ES5), and a small JS service ([`webos/service/`](webos/service)) does what an LG web page can't: the JustWatch and Yahoo Finance requests, the RAM figure, the TV's app list, and the Home / power-on watcher. A 4K LG draws apps at twice their size, so only transforms and opacity animate (56 fps on the dock, 53 on the posters, webOS 6.5). `luna-send-pub luna://com.webos.applicationManager/launch '{"id":"fr.sacha.tvhome","params":{"perf":"test"}}'` runs a speed test on the TV; `luna://fr.sacha.tvhome.service/dump` reads its numbers and the watcher's events. `webos/build.py` packs the `.ipk` without LG's tools; `--preview` also writes `webos/out/` to open in a browser. The dock uses the Mi Box's wide logos from `launcher/assets/demo/` when you have them (they are not in the repo); otherwise, the TV's own app icons. The LG packaging, installer and app list call are adapted from [Free My TV](https://github.com/simbasjungles/free-my-tv) (MIT).
 
 ---
 

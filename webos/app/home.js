@@ -120,7 +120,7 @@
         var cached = JSON.parse(get('lists') || 'null');
         if (cached && cached[TABS[0][0]] && cached[TABS[0][0]].length) {
           lists = cached;
-          buildShelf();
+          resetShelves();
         }
       } catch (e) {}
     }
@@ -138,7 +138,7 @@
         put('lists', JSON.stringify(lists));
         if (!changed) return;
         // Don't pull the row out from under someone browsing it.
-        if (at.row === 'shelf') shelfStale = true; else buildShelf();
+        if (at.row === 'shelf') shelfStale = true; else resetShelves();
       });
     });
   }
@@ -159,7 +159,7 @@
     items[i].classList.add('focused');
     if (items[i].onfocusin_) items[i].onfocusin_();
     // The shelf keeps a focused (enlarged) card clear of the edge; the dock, clear of its fading edges.
-    if (row === 'shelf') reveal($('shelf'), $('shelfWrap'), items[i], i === 0, 4, 10, false);
+    if (row === 'shelf') reveal(shelves[tab].row, $('shelfWrap'), items[i], i === 0, 4, 10, false);
     if (row === 'dock') reveal($('dock'), $('dockBox'), items[i], false, 0, 22, true);
     return true;
   }
@@ -180,9 +180,8 @@
 
   /** The dock's fading edges, on the side where tiles go on past the glass. */
   function fadeEdges(left, right) {
-    var a = left ? 'transparent 0%, #000 2.4%' : '#000 0%', b = right ? '#000 97.6%, transparent 100%' : '#000 100%';
-    var mask = left || right ? 'linear-gradient(to right, ' + a + ', ' + b + ')' : 'none';
-    $('dockClip').style.webkitMaskImage = mask;
+    $('fadeLeft').classList.toggle('on', left);
+    $('fadeRight').classList.toggle('on', right);
   }
 
   function activeTabIndex() {
@@ -199,7 +198,10 @@
       // Going up always lands on the active tab, not whichever is closest.
       else if (row === 'shelf') setFocus('header', activeTabIndex());
     } else if (key === K.down) {
-      if (row === 'header') setFocus('shelf', at.shelf) || setFocus('dock', at.dock);
+      if (row === 'header') {
+        if (i < TABS.length) selectTab(TABS[i][0]);   // a tab just reached: its row now, not after the pause
+        setFocus('shelf', at.shelf) || setFocus('dock', at.dock);
+      }
       else if (row === 'shelf') setFocus('dock', at.dock);
     } else if (key === K.ok) {
       var e = rows[row][i];
@@ -254,7 +256,10 @@
     rows.header = [];
     TABS.forEach(function (t, i) {
       var e = el('div', 'tab', t[0]);
-      e.onfocusin_ = function () { selectTab(t[0]); };
+      e.onfocusin_ = function () {
+        clearTimeout(tabTimer);
+        tabTimer = setTimeout(function () { selectTab(t[0]); }, 120);
+      };
       e.activate_ = function () { selectTab(t[0]); };
       tabs.appendChild(e);
       rows.header.push(e);
@@ -286,7 +291,10 @@
     });
   }
 
+  var tabTimer = null;
+
   function selectTab(name) {
+    clearTimeout(tabTimer);
     var changed = name !== tab || !rows.shelf.length;
     tab = name;
     styleTabs();
@@ -338,19 +346,42 @@
 
   // ---- Featured shelf ------------------------------------------------------------------------------------
 
+  // Each tab's row is built once and kept (hidden when another tab shows): moving along the tabs only swaps
+  // rows, instead of rebuilding 15 cards and decoding their pictures again.
+  var shelves = {};
+
+  /** Shows the active tab's row, back at its start, building it the first time. */
   function buildShelf() {
     shelfStale = false;
     var shelf = $('shelf');
-    shelf.innerHTML = '';
-    shelf.x_ = 0;
-    shelf.style.webkitTransform = shelf.style.transform = '';
-    rows.shelf = [];
+    if (!shelves[tab]) shelves[tab] = makeRow(lists[tab] || []);
+    for (var name in shelves) shelves[name].row.style.display = name === tab ? '' : 'none';
+    var row = shelves[tab].row;
+    row.x_ = 0;
+    row.style.webkitTransform = row.style.transform = '';
+    rows.shelf = shelves[tab].cards;
     at.shelf = 0;
-    var items = lists[tab] || [];
-    if (!items.length) {
-      shelf.appendChild(el('div', 'empty', 'Chargement des films et séries…'));
+    if (!rows.shelf.length) {
+      delete shelves[tab];   // the loading message: built again once the lists are in
       if (at.row === 'shelf') setFocus('header', activeTabIndex());
       return;
+    }
+    if (at.row === 'shelf') setFocus('shelf', 0);
+  }
+
+  /** New lists: every row is built again (the active one now, the others when shown). */
+  function resetShelves() {
+    $('shelf').innerHTML = '';
+    shelves = {};
+    buildShelf();
+  }
+
+  function makeRow(items) {
+    var row = el('div', 'row'), cards = [];
+    $('shelf').appendChild(row);
+    if (!items.length) {
+      row.appendChild(el('div', 'empty', 'Chargement des films et séries…'));
+      return {row: row, cards: cards};
     }
     var cardH = 250;
     items.forEach(function (it, i) {
@@ -360,6 +391,7 @@
       card.style.width = w + 'px';
       var frame = el('div', 'frame');
       var img = new Image();
+      img.decoding = 'async';   // decoded off the main thread: no hitch when a row first shows
       img.onload = function () { img.className = 'loaded'; };
       img.src = hero ? it.wide : it.poster;
       frame.appendChild(img);
@@ -370,11 +402,11 @@
       card.activate_ = function () {
         if (it.netflixId) TV.netflix(it.netflixId); else TV.launch('netflix');
       };
-      shelf.appendChild(card);
-      rows.shelf.push(card);
+      row.appendChild(card);
+      cards.push(card);
       pointable(card, 'shelf', i);
     });
-    if (at.row === 'shelf') setFocus('shelf', 0);
+    return {row: row, cards: cards};
   }
 
   // ---- App dock ----------------------------------------------------------------------------------------
@@ -435,6 +467,44 @@
     else reveal(dock, $('dockBox'), rows.dock[0] || dock, true, 0, 22, true);
   }
 
+  // ---- Speed test (opened with {"perf": "label"}): moves through every row, logs the frame times ----------
+
+  function speedTest(label) {
+    var K = TV.keys, script = [], frames = [], last = 0, section = '', done = false;
+    function add(name, key, n) { for (var i = 0; i < n; i++) script.push([name, key]); }
+    add('dock', K.right, 8); add('dock', K.left, 8);
+    add('move', K.up, 1); add('shelf', K.right, 6); add('shelf', K.left, 6);
+    add('move', K.up, 1); add('tabs', K.right, 4); add('tabs', K.left, 4);
+    add('move', K.down, 2);
+    function frame(t) {
+      if (last && section) frames.push([section, t - last]);
+      last = t;
+      if (!done) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+    var i = 0;
+    var step = setInterval(function () {
+      if (i >= script.length) {
+        clearInterval(step);
+        done = true;
+        var out = {perf: label, ua: navigator.userAgent, dpr: window.devicePixelRatio, w: window.innerWidth,
+          h: window.innerHeight, memory: navigator.deviceMemory, cpus: navigator.hardwareConcurrency, sections: {}};
+        ['dock', 'shelf', 'tabs', 'move'].forEach(function (s) {
+          var ms = frames.filter(function (f) { return f[0] === s; }).map(function (f) { return f[1]; }).sort(function (a, b) { return a - b; });
+          if (!ms.length) return;
+          var sum = ms.reduce(function (a, b) { return a + b; }, 0);
+          out.sections[s] = {frames: ms.length, fps: Math.round(1000 * ms.length / sum), p95: Math.round(ms[Math.floor(ms.length * 0.95)]),
+            worst: Math.round(ms[ms.length - 1]), over33: ms.filter(function (m) { return m > 33.4; }).length};
+        });
+        TV.service('log', out);
+        return;
+      }
+      section = script[i][0];
+      move(script[i][1]);
+      i++;
+    }, 350);
+  }
+
   // ---- Start ----------------------------------------------------------------------------------------------
 
   function shown() {
@@ -442,20 +512,27 @@
     pricesTick();
     // The app stays alive for days in the background: refresh the lists when they get old.
     if (Date.now() - lastFetch > REFRESH_MS) loadFeeds();
-    else if (shelfStale && at.row !== 'shelf') buildShelf();
+    else if (shelfStale && at.row !== 'shelf') resetShelves();
   }
 
   window.addEventListener('resize', fit);
   document.addEventListener('keydown', function (e) {
+    // Back does nothing, as on the Mi Box: this is the home screen (LG's home would only bring it back).
     if (e.keyCode === TV.keys.back) {
       e.preventDefault();
-      TV.back();
       return;
     }
     if (move(e.keyCode)) e.preventDefault();
   });
   document.addEventListener('visibilitychange', function () { if (!document.hidden) shown(); });
-  document.addEventListener('webOSRelaunch', shown);
+  document.addEventListener('webOSRelaunch', function () {
+    // With handlesRelaunch, opening the app again (number key, the watcher) only sends this event: the app has
+    // to come to the front itself.
+    if (window.PalmSystem && window.PalmSystem.activate) window.PalmSystem.activate();
+    shown();
+    var perf = TV.launchParams().perf;
+    if (perf) speedTest(perf);
+  });
 
   applyTheme();
   fit();
@@ -469,4 +546,6 @@
   });
   setInterval(tick, 15000);
   shown();
+  TV.watch();
+  if (TV.launchParams().perf) setTimeout(function () { speedTest(TV.launchParams().perf); }, 5000);
 })();
