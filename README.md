@@ -101,7 +101,7 @@ You need **Python 3** and **OpenSSH** (already on macOS, Linux and Windows 10+) 
    ```bash
    python3 webos/install.py 192.168.1.120
    ```
-3. **On the TV**, the first time, a message asks whether to allow the app: allow it. The dock then shows all your apps, and the app becomes the TV's home: it comes back when you press **Home** and when the TV turns on. Press **Home twice** to reach LG's own home screen.
+3. **On the TV**, the first time, a message asks whether to allow the app: allow it. The dock then shows all your apps, and the app becomes the TV's home: it comes back when you press **Home** (LG's home shows for about a second first: taking over sooner makes the two swap back and forth) and when the TV turns on. To stay on LG's own home screen, press **Home again** right after this one comes back.
 
 LG gives these events to a Developer Mode app only through its remote control API (the one LG's phone app uses), so a small service on the TV watches it while the app is running in the background. After the TV restarts from the mains (not from standby), open the app once with its number key. Keep **Quick Start+** on (Settings → General → Devices → TV Management): the TV then only sleeps when turned off, and turning it on is detected.
 
