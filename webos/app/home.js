@@ -145,8 +145,8 @@
 
   // ---- Focus: three rows, moved through with the arrows --------------------------------------------------
 
-  var rows = {header: [], shelf: [], dock: []};
-  var at = {row: 'dock', header: 0, shelf: 0, dock: 0};
+  var rows = {header: [], shelf: [], dock: [], inputs: [], sound: []};
+  var at = {row: 'dock', header: 0, shelf: 0, dock: 0, inputs: 0, sound: 0};
 
   function setFocus(row, i) {
     var items = rows[row];
@@ -161,6 +161,8 @@
     // The shelf keeps a focused (enlarged) card clear of the edge; the dock, clear of its fading edges.
     if (row === 'shelf') reveal(shelves[tab].row, $('shelfWrap'), items[i], i === 0, 4, 10, false);
     if (row === 'dock') reveal($('dock'), $('dockBox'), items[i], false, 0, 22, true);
+    slidePage(row === 'inputs' || row === 'sound');
+    if (row === 'sound' && !items[i].classList.contains('on')) refreshSound();
     return true;
   }
 
@@ -199,6 +201,8 @@
     else if (key === K.right) setFocus(row, i + 1);
     else if (key === K.up) {
       if (row === 'dock') setFocus('shelf', at.shelf) || setFocus('header', activeTabIndex());
+      else if (row === 'sound') setFocus('inputs', at.inputs);
+      else if (row === 'inputs') setFocus('dock', at.dock);
       // Going up always lands on the active tab, not whichever is closest.
       else if (row === 'shelf') setFocus('header', activeTabIndex());
     } else if (key === K.down) {
@@ -207,6 +211,8 @@
         setFocus('shelf', at.shelf) || setFocus('dock', at.dock);
       }
       else if (row === 'shelf') setFocus('dock', at.dock);
+      else if (row === 'dock') setFocus('inputs', at.inputs);
+      else if (row === 'inputs') setFocus('sound', at.sound);
     } else if (key === K.ok) {
       var e = rows[row][i];
       if (e && e.activate_) e.activate_();
@@ -517,6 +523,8 @@
     add('move', K.up, 1); add('shelf', K.right, 6); add('shelf', K.left, 6);
     add('move', K.up, 1); add('tabs', K.right, 4); add('tabs', K.left, 4);
     add('move', K.down, 2);
+    add('slide', K.down, 1); add('extra', K.right, 4); add('slide', K.down, 1); add('extra', K.right, 3);
+    add('extra', K.left, 3); add('slide', K.up, 2);
     function frame(t) {
       if (last && section) frames.push([section, t - last]);
       last = t;
@@ -530,7 +538,7 @@
         done = true;
         var out = {perf: label, ua: navigator.userAgent, dpr: window.devicePixelRatio, w: window.innerWidth,
           h: window.innerHeight, memory: navigator.deviceMemory, cpus: navigator.hardwareConcurrency, sections: {}};
-        ['dock', 'shelf', 'tabs', 'move'].forEach(function (s) {
+        ['dock', 'shelf', 'tabs', 'move', 'slide', 'extra'].forEach(function (s) {
           var ms = frames.filter(function (f) { return f[0] === s; }).map(function (f) { return f[1]; }).sort(function (a, b) { return a - b; });
           if (!ms.length) return;
           var sum = ms.reduce(function (a, b) { return a + b; }, 0);
@@ -544,6 +552,110 @@
       move(script[i][1]);
       i++;
     }, 350);
+  }
+
+  // ---- Below the dock: inputs and sound -------------------------------------------------------------------
+
+  /** Down from the dock, the page slides up until the dock is at the top, showing the two bands under it. */
+  var slid = false;
+  function slidePage(down) {
+    if (down === slid) return;
+    slid = down;
+    clearTimeout(slidePage.timer);
+    // Shown before sliding up; hidden only once the slide back down is over (320 ms).
+    if (down) $('extra').classList.add('shown');
+    else slidePage.timer = setTimeout(function () { $('extra').classList.remove('shown'); }, 340);
+    var y = down ? -($('col').offsetTop + $('dockBox').offsetTop - 30) : 0;
+    $('page').style.webkitTransform = $('page').style.transform = y ? 'translateY(' + y + 'px)' : '';
+  }
+
+  var EXTRA_GLYPHS = {
+    tv: '<rect x="8" y="18" width="84" height="56" rx="8"/><path d="M34 88h32"/>',
+    hdmi: '<path d="M10 34h80v18l-12 14H22L10 52z"/><path d="M30 46h40"/>',
+    speaker: '<path d="M14 38h16l22-18v60L30 62H14z"/><path d="M66 36c8 8 8 20 0 28M76 26c14 14 14 34 0 48"/>',
+    soundbar: '<rect x="6" y="38" width="88" height="24" rx="8"/><path d="M24 50h0M40 50h0M60 50h0M76 50h0"/>',
+    optical: '<circle cx="50" cy="50" r="34"/><circle cx="50" cy="50" r="10"/>',
+    bluetooth: '<path d="M30 30l40 40-20 18V12l20 18-40 40"/>',
+    headphones: '<path d="M16 66V52a34 34 0 0 1 68 0v14"/><rect x="12" y="58" width="16" height="28" rx="6"/>' +
+        '<rect x="72" y="58" width="16" height="28" rx="6"/>',
+    settings: '<circle cx="50" cy="50" r="14"/><path d="M50 10v14M50 76v14M10 50h14M76 50h14M22 22l10 10M68 68l10 10' +
+        'M78 22L68 32M32 68L22 78"/>'
+  };
+
+  function extraTile(glyph, label, row, index, onOk) {
+    var tile = el('div', 'tile soft');
+    tile.innerHTML = '<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="8" ' +
+        'stroke-linecap="round" stroke-linejoin="round">' + EXTRA_GLYPHS[glyph] + '</svg>';
+    tile.appendChild(el('div', 'name', label));
+    tile.activate_ = onOk;
+    pointable(tile, row, index);
+    return tile;
+  }
+
+  function buildInputs() {
+    TV.inputs(function (list) {
+      var row = $('inputs');
+      row.innerHTML = '';
+      rows.inputs = list.map(function (inp, i) {
+        var tile = extraTile(inp.kind, inp.label, 'inputs', i, function () { TV.launch(inp.id); });
+        if (!inp.connected) tile.classList.add('off');   // nothing plugged in there, as far as the TV knows
+        row.appendChild(tile);
+        return tile;
+      });
+    });
+  }
+
+  // The outputs an LG TV of that age offers; one the TV hasn't got answers with an error, shown on its tile.
+  var OUTPUTS = [
+    ['tv_speaker', 'speaker', 'Haut-parleurs'],
+    ['external_arc', 'soundbar', 'Barre de son'],
+    ['external_optical', 'optical', 'Optique'],
+    ['bt_soundbar', 'bluetooth', 'Bluetooth'],
+    ['headphone', 'headphones', 'Casque']
+  ];
+
+  function buildSound() {
+    var row = $('sound');
+    row.innerHTML = '';
+    rows.sound = OUTPUTS.map(function (o, i) {
+      var tile = extraTile(o[1], o[2], 'sound', i, function () {
+        function failed(text) {
+          var name = tile.querySelector('.name');
+          tile.classList.add('failed');
+          name.textContent = text;
+          setTimeout(function () { tile.classList.remove('failed'); name.textContent = o[2]; }, 2500);
+        }
+        TV.setSoundOutput(o[0], function (ok) {
+          if (!ok) { failed('Indisponible'); return; }
+          markSound(o[0]);
+          // The TV says yes, then falls back to its speakers when nothing is there (Bluetooth with no headset
+          // connected, webOS 6.5): what it really uses, a moment later.
+          setTimeout(function () {
+            TV.soundOutput(function (now) {
+              if (!now) return;
+              markSound(now);
+              if (now !== o[0]) failed('Aucun appareil');
+            });
+          }, 1500);
+        });
+      });
+      tile.output_ = o[0];
+      row.appendChild(tile);
+      return tile;
+    });
+    // Pairing a Bluetooth headset happens in the TV's own settings.
+    var settings = extraTile('settings', 'Réglages du son', 'sound', OUTPUTS.length, function () { TV.settings('sound'); });
+    row.appendChild(settings);
+    rows.sound.push(settings);
+    refreshSound();
+  }
+
+  function markSound(output) {
+    rows.sound.forEach(function (t) { t.classList.toggle('on', t.output_ === output); });
+  }
+
+  function refreshSound() {
+    TV.soundOutput(function (output) { if (output) markSound(output); });
   }
 
   // ---- Start ----------------------------------------------------------------------------------------------
@@ -581,6 +693,8 @@
   buildHeader();
   buildShelf();
   TV.onApps = buildDock;   // the full list, once the TV has allowed it
+  buildInputs();
+  buildSound();
   TV.apps(function (apps) {
     buildDock(apps);
     if (at.row === 'dock' && rows.dock.length) setFocus('dock', 0);

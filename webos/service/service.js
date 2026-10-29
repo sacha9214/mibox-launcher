@@ -11,6 +11,7 @@
  *  - phone: a page for phones on the home Wi-Fi (http://<TV>:8090): describe a film or a show, Claude names it (on
  *    the server in server/tvhome_ai.py, with a Claude subscription), JustWatch says where it streams in France, and
  *    the TV opens it there (the title itself in Netflix; other apps open on their home).
+ *  - sound: where the TV's sound goes (read, and changed), through the remote control API.
  *  - log / dump: the speed test's numbers and the watcher's events, kept in memory (the service can't write
  *    where SSH reads), read with luna-send-pub luna://fr.sacha.tvhome.service/dump '{}'.
  * Plain ES5 with Node's built-ins only: webOS 6 ships Node 8.
@@ -131,7 +132,8 @@ service.register('dump', function (message) {
 
 var APP_ID = require('./package.json').name.replace(/\.service$/, '');
 // The same list as the page (webos/app/tv.js). Changing it makes the TV ask again.
-var PERMISSIONS = ['READ_INSTALLED_APPS', 'READ_RUNNING_APPS', 'READ_POWER_STATE', 'LAUNCH'];
+var PERMISSIONS = ['READ_INSTALLED_APPS', 'READ_RUNNING_APPS', 'READ_POWER_STATE', 'LAUNCH', 'READ_INPUT_DEVICE_LIST', 'CONTROL_INPUT_TV',
+  'CONTROL_AUDIO', 'READ_SETTINGS', 'WRITE_SETTINGS'];
 
 /** A client's text frame: masked, as the protocol asks. */
 function frame(text) {
@@ -446,19 +448,26 @@ function norm(s) {
   return String(s || '').toLowerCase().replace(/\+/g, 'plus').replace(/amazon/g, '').replace(/[^a-z0-9]/g, '');
 }
 
-/** The TV's apps, through the remote control API (the key the watcher has): [{id, title}]. */
-function tvApps(done) {
-  if (!key) { done([]); return; }
+/** One request to the remote control API with the watcher's key; done(error, payload). */
+function ssapCall(uri, payload, done) {
+  if (!key) { done('not allowed yet'); return; }
   var finished = false;
   var c = connect(key, {
-    registered: function (k, send) { send({type: 'request', id: 'apps', uri: 'ssap://com.webos.applicationManager/listLaunchPoints'}); },
+    registered: function (k, send) { send({type: 'request', id: 'call', uri: uri, payload: payload || {}}); },
     message: function (m) {
-      if (m.id !== 'apps' || finished) return;
+      if (m.id !== 'call' || finished) return;
       finished = true;
       c.close();
-      done(((m.payload || {}).launchPoints || []).map(function (p) { return {id: p.id, title: p.title || ''}; }));
+      done(m.type === 'error' ? String(m.error || 'error') : null, m.payload || {});
     },
-    end: function () { if (!finished) { finished = true; done([]); } }
+    end: function () { if (!finished) { finished = true; done('closed'); } }
+  });
+}
+
+/** The TV's apps: [{id, title}]. */
+function tvApps(done) {
+  ssapCall('ssap://com.webos.applicationManager/listLaunchPoints', {}, function (err, p) {
+    done(err ? [] : (p.launchPoints || []).map(function (a) { return {id: a.id, title: a.title || ''}; }));
   });
 }
 
@@ -541,3 +550,22 @@ function startPhone() {
   phoneServer.on('error', function (e) { log({phone: 'server error', error: e.code}); phoneServer = null; });
   phoneServer.listen(PHONE_PORT, '0.0.0.0', function () { log({phone: 'listening', port: PHONE_PORT}); });
 }
+
+
+// ---- sound ---------------------------------------------------------------
+
+// Where the sound goes (TV speakers, sound bar, Bluetooth…): LG's own bus refuses it to Developer Mode apps, its
+// remote control API allows it (CONTROL_AUDIO). {} reads it, {output} changes it.
+service.register('sound', function (message) {
+  var p = message.payload || {};
+  if (p.output) {
+    ssapCall('ssap://com.webos.service.apiadapter/audio/changeSoundOutput', {output: String(p.output)}, function (err, r) {
+      log({sound: p.output, error: err || r.errorText});
+      message.respond({returnValue: !err && r.returnValue !== false, errorText: err || r.errorText});
+    });
+  } else {
+    ssapCall('ssap://com.webos.service.apiadapter/audio/getSoundOutput', {}, function (err, r) {
+      message.respond({returnValue: !err, output: r && r.soundOutput, errorText: err || undefined});
+    });
+  }
+});

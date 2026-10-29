@@ -24,6 +24,12 @@ body { font-family: Roboto, "LG Smart UI", "Museo Sans", -apple-system, Helvetic
   -webkit-transform-origin: 0 0; transform-origin: 0 0;
   background: linear-gradient(var(--bg-top), var(--bg), var(--bg-bottom));
 }
+/* The whole page: it slides up to show what's below the dock (#extra). No will-change: kept as a layer for good,
+   this 4K-sized page took the dock from 56 to 45 fps and the posters from 53 to 36 (webOS 6.5). */
+#page {
+  position: absolute; left: 0; top: 0; width: 960px; height: 540px;
+  -webkit-transition: -webkit-transform 320ms cubic-bezier(0.2, 0, 0, 1); transition: transform 320ms cubic-bezier(0.2, 0, 0, 1);
+}
 #col {
   position: absolute; left: 16px; right: 16px; top: 30px; bottom: 24px;
   display: -webkit-flex; display: flex; -webkit-flex-direction: column; flex-direction: column;
@@ -117,3 +123,26 @@ body { font-family: Roboto, "LG Smart UI", "Museo Sans", -apple-system, Helvetic
 .phone-text { font-size: 10px; line-height: 14px; color: var(--muted); }
 .phone-url { font-size: 12px; font-weight: 500; color: var(--ink); margin-top: 4px; }
 .phone-hint { font-size: 9px; color: var(--muted); margin-top: 14px; }
+
+/* ---- Below the dock: inputs and sound, in the dock's frosted bands ---- */
+/* Off screen, it isn't drawn at all (visibility) until the page slides to it: its layers would cost the shelf. */
+#extra { position: absolute; left: 16px; right: 16px; top: 540px; visibility: hidden; }
+#extra.shown { visibility: visible; }
+#extra .label { font-size: 11px; font-weight: 500; color: var(--muted); margin: 0 0 8px 6px; }
+#extra .band + .label { margin-top: 18px; }
+.band {
+  position: relative; height: 80px; border-radius: 22px; overflow: hidden;
+  background: var(--glass); border: 1px solid var(--glass-edge); box-shadow: 0 3px 12px rgba(0, 0, 0, 0.12);
+}
+.band-row { position: absolute; left: 0; top: 11px; padding: 0 22px; display: -webkit-flex; display: flex; }
+.tile.soft {
+  width: 124px; background: var(--surface); color: var(--ink); will-change: auto;
+  -webkit-flex-direction: column; flex-direction: column;
+}
+.tile.soft svg { width: 20px; height: 20px; display: block; margin-bottom: 5px; }
+.tile.soft .name { color: inherit; font-size: 11px; font-weight: 500; padding: 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 112px; }
+/* Their own layers only while the section shows: moving along them went from 44 to 56 fps (webOS 6.5). */
+#extra.shown .tile.soft { will-change: transform; }
+.tile.soft.off { opacity: 0.45; }
+.tile.soft.on { background: var(--ink); color: var(--on-ink); }
+.tile.soft.failed .name { color: #E5484D; }

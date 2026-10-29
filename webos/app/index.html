@@ -7,6 +7,7 @@
 </head>
 <body>
   <div id="stage">
+    <div id="page">
     <div id="col">
       <div id="header">
         <div id="tabs"></div>
@@ -15,6 +16,14 @@
       </div>
       <div id="shelfWrap"><div id="shelf"></div></div>
       <div id="dockBox"><div id="dockClip"><div id="dock"></div></div><div class="fade" id="fadeLeft"></div><div class="fade" id="fadeRight"></div></div>
+    </div>
+    <!-- Below the dock: reached with Down from it, the page slides up. -->
+    <div id="extra">
+      <div class="label">Entrées</div>
+      <div class="band"><div class="band-row" id="inputs"></div></div>
+      <div class="label">Son</div>
+      <div class="band"><div class="band-row" id="sound"></div></div>
+    </div>
     </div>
   </div>
   <script src="config.js"></script>

@@ -105,6 +105,8 @@ You need **Python 3** and **OpenSSH** (already on macOS, Linux and Windows 10+) 
 
 LG gives these events to a Developer Mode app only through its remote control API (the one LG's phone app uses), so a small service on the TV watches it while the app is running in the background. After the TV restarts from the mains (not from standby), open the app once with its number key. Keep **Quick Start+** on (Settings → General → Devices → TV Management): the TV then only sleeps when turned off, and turning it on is detected.
 
+**Inputs and sound, below the dock.** Press Down from the dock: the page slides up to two more bands, *Entrées* (the TV, then each HDMI port with the name you gave it on the TV, dimmed when nothing is plugged in) and *Son* (TV speakers, sound bar, optical, Bluetooth, headphones, and the TV's sound settings to pair a headset). The output in use is highlighted; one the TV can't use (Bluetooth with no headset connected) says so on its tile. LG lets a Developer Mode app read its inputs, but the sound output only through its remote control API: that's one of the permissions the TV asks for.
+
 **Find a film from your phone.** The 📱 button at the top shows a QR code: scan it on the home Wi-Fi, describe a film or a show (even vaguely: "the series with the lawyer who never went to law school"), and the TV opens it: the title itself in Netflix, the app's home for other services. The TV serves that page itself (port 8090); Claude names the title on a server of yours, through your Claude subscription ([`server/tvhome_ai.py`](server/tvhome_ai.py)), and JustWatch says where it streams in France. To set it up on a server where Claude Code is installed:
 
 ```bash

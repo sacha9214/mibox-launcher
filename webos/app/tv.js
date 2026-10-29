@@ -59,7 +59,8 @@ var TV = (function () {
   // The same list as webos/service: the app list, and for the watcher, the app on screen, the power state and
   // opening apps. Changing it makes the TV ask again.
   var SSAP_KEY = 'tvhome.ssapKey2', SSAP_REFUSED = 'tvhome.ssapRefused2';
-  var PERMISSIONS = ['READ_INSTALLED_APPS', 'READ_RUNNING_APPS', 'READ_POWER_STATE', 'LAUNCH'];
+  var PERMISSIONS = ['READ_INSTALLED_APPS', 'READ_RUNNING_APPS', 'READ_POWER_STATE', 'LAUNCH', 'READ_INPUT_DEVICE_LIST', 'CONTROL_INPUT_TV',
+      'CONTROL_AUDIO', 'READ_SETTINGS', 'WRITE_SETTINGS'];
 
   function store(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   function read(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -210,6 +211,40 @@ var TV = (function () {
           if (res2 && TV.onApps) TV.onApps(list(res2));
         });
       });
+    },
+
+    /**
+     * The TV's inputs: the antenna, then each HDMI port with the name given to it on the TV ("PS5").
+     * [{id, label, kind, connected}], id being the app that shows it.
+     */
+    inputs: function (done) {
+      var tv = {id: 'com.webos.app.livetv', label: 'Télé', kind: 'tv', connected: true};
+      if (!webos) {
+        done([tv, {id: 'com.webos.app.hdmi1', label: 'HDMI 1', kind: 'hdmi', connected: true},
+          {id: 'com.webos.app.hdmi2', label: 'HDMI 2', kind: 'hdmi', connected: true},
+          {id: 'com.webos.app.hdmi3', label: 'HDMI 3', kind: 'hdmi', connected: true},
+          {id: 'com.webos.app.hdmi4', label: 'HDMI 4', kind: 'hdmi', connected: false}]);
+        return;
+      }
+      luna('luna://com.webos.service.eim/getAllInputStatus', {}, function (res) {
+        var out = [tv];
+        ((res && res.devices) || []).forEach(function (d) {
+          if (/^HDMI/.test(d.id)) out.push({id: d.appId, label: d.label || d.id, kind: 'hdmi', connected: d.connected !== false});
+        });
+        done(out);
+      });
+    },
+
+    /** Where the sound goes ("tv_speaker", "external_arc", "bt_soundbar"…), or null. */
+    soundOutput: function (done) {
+      if (!webos) { done('tv_speaker'); return; }
+      service('sound', {}, function (res) { done(res && res.output); });
+    },
+
+    /** Sends the sound there; done(ok). */
+    setSoundOutput: function (output, done) {
+      if (!webos) { done(true); return; }
+      service('sound', {output: output}, function (res) { done(!!res); });
     },
 
     /** What the app was opened with ({perf: true} runs the speed test). */
